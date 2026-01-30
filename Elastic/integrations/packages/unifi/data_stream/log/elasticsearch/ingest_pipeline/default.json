@@ -1,0 +1,262 @@
+{
+  "description": "Pipeline for parsing Ubiquiti UniFi Syslog, Firewall, and IPS events to ECS",
+  "processors": [
+    {
+      "grok": {
+        "field": "message",
+        "patterns": [
+          "%{SYSLOGTIMESTAMP:syslog_timestamp} (?:%{TIMESTAMP_ISO8601} )?%{SYSLOGHOST:host.hostname} CEF:0\\|%{DATA:observer.vendor}\\|%{DATA:observer.product}\\|%{DATA:observer.version}\\|%{DATA:event.code}\\|%{DATA:event.name}\\|%{DATA:event.severity}\\|%{GREEDYDATA:cef_extensions}",
+          "CEF:0\\|%{DATA:observer.vendor}\\|%{DATA:observer.product}\\|%{DATA:observer.version}\\|%{DATA:event.code}\\|%{DATA:event.name}\\|%{DATA:event.severity}\\|%{GREEDYDATA:cef_extensions}",
+          "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{DATA:process.name}(?:\\[%{POSINT:process.pid:long}\\])?:? %{GREEDYDATA:legacy_kv_body}",
+          "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} kernel: \\[%{DATA:rule.name}\\]%{GREEDYDATA:legacy_kv_body}",
+          "UNIFIdeviceName=%{DATA:observer.name} %{GREEDYDATA:legacy_kv_body}"
+        ],
+        "ignore_missing": true,
+        "on_failure": [
+          {
+            "set": {
+              "field": "error.message",
+              "value": "Initial Grok Failed: {{ _ingest.on_failure_message }}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "gsub": {
+        "if": "ctx.cef_extensions != null",
+        "field": "cef_extensions",
+        "pattern": "\\s+(?=(?:UNIFI|src|dst|msg|cnt|cs\\d|cn\\d|dvc|shost|dhost|smac|dmac|act|app|c6a\\d|cat|cfp\\d)\\w*=)",
+        "replacement": "|"
+      }
+    },
+    {
+      "kv": {
+        "if": "ctx.cef_extensions != null",
+        "field": "cef_extensions",
+        "field_split": "\\|",
+        "value_split": "=",
+        "target_field": "unifi.cef",
+        "ignore_failure": true
+      }
+    },
+    {
+      "kv": {
+        "if": "ctx.legacy_kv_body != null",
+        "field": "legacy_kv_body",
+        "field_split": " ",
+        "value_split": "=",
+        "target_field": "unifi.kv",
+        "ignore_failure": true,
+        "exclude_keys": [
+          "MAC",
+          "PREC",
+          "ID",
+          "TOS",
+          "TTL",
+          "LEN",
+          "URGP",
+          "WINDOW",
+          "RES"
+        ]
+      }
+    },
+    {
+      "script": {
+        "description": "Merge CEF and KV fields into a common temporary object for mapping",
+        "source": "\n          if (ctx.unifi == null) ctx.unifi = [:];\n          if (ctx.unifi.cef != null) {\n            ctx.unifi.putAll(ctx.unifi.cef);\n            ctx.unifi.remove('cef');\n          }\n          if (ctx.unifi.kv != null) {\n            ctx.unifi.putAll(ctx.unifi.kv);\n            ctx.unifi.remove('kv');\n          }\n        "
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.src",
+        "target_field": "source.ip",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIclientIp",
+        "target_field": "source.ip",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.SRC",
+        "target_field": "source.ip",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.dst",
+        "target_field": "destination.ip",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.DST",
+        "target_field": "destination.ip",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIclientMac",
+        "target_field": "source.mac",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.MAC",
+        "target_field": "source.mac",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.SPT",
+        "target_field": "source.port",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.DPT",
+        "target_field": "destination.port",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.PROTO",
+        "target_field": "network.transport",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.msg",
+        "target_field": "event.reason",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIwifiName",
+        "target_field": "network.name",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIadmin",
+        "target_field": "user.name",
+        "ignore_missing": true
+      }
+    },
+    {
+      "grok": {
+        "field": "event.reason",
+        "patterns": [
+          ".*Source IP: %{IP:source.ip}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "date": {
+        "field": "syslog_timestamp",
+        "formats": [
+          "MMM  d HH:mm:ss",
+          "MMM dd HH:mm:ss"
+        ],
+        "target_field": "@timestamp",
+        "timezone": "{{ event.timezone }}",
+        "ignore_failure": true
+      }
+    },
+    {
+      "convert": {
+        "field": "source.port",
+        "type": "long",
+        "ignore_missing": true
+      }
+    },
+    {
+      "convert": {
+        "field": "destination.port",
+        "type": "long",
+        "ignore_missing": true
+      }
+    },
+    {
+      "lowercase": {
+        "field": "network.transport",
+        "ignore_missing": true
+      }
+    },
+    {
+      "set": {
+        "field": "event.kind",
+        "value": "event"
+      }
+    },
+    {
+      "set": {
+        "field": "event.category",
+        "value": "network"
+      }
+    },
+    {
+      "script": {
+        "source": "if (ctx.rule != null && ctx.rule.name != null) { if (ctx.rule.name.contains('LAN_IN') || ctx.rule.name.contains('WAN_IN')) { ctx.event.action = 'allow'; ctx.event.outcome = 'success'; } else if (ctx.rule.name.contains('DROP') || ctx.rule.name.contains('REJECT') || ctx.rule.name.contains('DENY')) { ctx.event.action = 'deny'; ctx.event.outcome = 'failure'; } else { ctx.event.action = 'info'; } }",
+        "ignore_failure": true
+      }
+    },
+    {
+      "geoip": {
+        "field": "source.ip",
+        "target_field": "source.geo",
+        "ignore_missing": true
+      }
+    },
+    {
+      "geoip": {
+        "field": "destination.ip",
+        "target_field": "destination.geo",
+        "ignore_missing": true
+      }
+    },
+    {
+      "community_id": {
+        "target_field": "network.community_id",
+        "ignore_failure": true
+      }
+    },
+    {
+      "remove": {
+        "field": [
+          "legacy_kv_body",
+          "cef_extensions",
+          "syslog_timestamp",
+          "unifi.kv",
+          "unifi.cef"
+        ],
+        "ignore_missing": true
+      }
+    }
+  ],
+  "on_failure": [
+    {
+      "set": {
+        "field": "error.message",
+        "value": "Pipeline Failed: {{ _ingest.on_failure_message }}"
+      }
+    }
+  ]
+}

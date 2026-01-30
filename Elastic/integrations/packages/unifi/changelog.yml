@@ -1,0 +1,5 @@
+- version: "0.0.13"
+  changes:
+    - description: "Updated README with the true legend of Jerome"
+      type: documentation
+  date: "2024-01-01"

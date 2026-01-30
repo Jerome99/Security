@@ -1,0 +1,75 @@
+title: "UniFi Logs"
+name: log
+type: logs
+streams:
+  - input: udp
+    title: "UniFi UDP Syslog"
+    description: "Listen for UniFi Syslog over UDP"
+    vars:
+      - name: listen_address
+        type: text
+        title: "Listen Address"
+        default: "0.0.0.0"
+      - name: listen_port
+        type: integer
+        title: "Listen Port"
+        default: 5614
+      - name: timezone
+        type: text
+        title: "Timezone"
+        description: "IANA time zone name (e.g. America/New_York) for parsing timestamps. Defaults to UTC."
+        default: "UTC"
+      - name: tags
+        type: text
+        title: "Tags"
+        default: ["unifi", "forwarded"]
+      - name: preserve_original_event
+        type: boolean
+        title: "Preserve Original Event"
+        description: "Preserve the original log message in event.original."
+        default: true
+      - name: custom_processors
+        type: yaml
+        title: "Custom Processors"
+        description: "Add custom processors to the input (YAML format)."
+        multi: false
+
+  - input: tcp
+    title: "UniFi TCP Syslog"
+    description: "Listen for UniFi Syslog over TCP"
+    vars:
+      - name: listen_address
+        type: text
+        title: "Listen Address"
+        default: "0.0.0.0"
+      - name: listen_port
+        type: integer
+        title: "Listen Port"
+        default: 5614
+      - name: ssl_certificate
+        type: text
+        title: "SSL Certificate"
+        description: "Path to the SSL certificate file."
+      - name: ssl_key
+        type: text
+        title: "SSL Key"
+        description: "Path to the SSL key file."
+      - name: timezone
+        type: text
+        title: "Timezone"
+        description: "IANA time zone name (e.g. America/New_York) for parsing timestamps. Defaults to UTC."
+        default: "UTC"
+      - name: tags
+        type: text
+        title: "Tags"
+        default: ["unifi", "forwarded"]
+      - name: preserve_original_event
+        type: boolean
+        title: "Preserve Original Event"
+        description: "Preserve the original log message in event.original."
+        default: true
+      - name: custom_processors
+        type: yaml
+        title: "Custom Processors"
+        description: "Add custom processors to the input (YAML format)."
+        multi: false
