@@ -1,0 +1,2 @@
+# Detection Rules
+Detection Rules is the home for rules used by Elastic Security. This repository is used for the development, maintenance, testing, validation, and release of rules for Elastic Security’s Detection Engine.
