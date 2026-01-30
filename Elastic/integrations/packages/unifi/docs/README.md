@@ -27,7 +27,7 @@ The integration collects logs through the following data streams:
 2. Navigate to **Settings > System > Advanced**.
 3. Enable **Remote Logging**.
 4. Enter the **IP Address** of the Elastic Agent.
-5. Enter the **Port** (default: `514` or typically `5614` for this custom integrations).
+5. Enter the **Port** (default: `514` in the UI but if keeping the default config for this integration use `5614`).
 6. Set the **Logging Level** (recommended: `Debug` for firewall logs, `Auto` for general).
 7. Click **Apply Changes**.
 
@@ -35,46 +35,56 @@ The integration collects logs through the following data streams:
 
 The integration uses an Elasticsearch Ingest Pipeline to parse raw Syslog messages. Key processing steps include:
 
-1. **Grok Parsing**: Extracts timestamps, process names (e.g., `kernel`, `sudo`), and the raw message body.
-2. **Firewall Pattern Matching**: specifically parses kernel logs for packet filtering events (e.g., `[WAN_IN-default-D]`) to extract:
-   * Source/Destination IPs and Ports
-   * MAC addresses
-   * Interfaces (in/out)
-   * Protocols (TCP/UDP/ICMP)
-3. **ECS Mapping**: Renames vendor-specific fields to standard ECS fields (see table below).
-4. **GeoIP Enrichment**: Adds `source.geo` and `destination.geo` location data based on IP addresses.
-5. **Network Direction**: Infers `network.direction` (inbound, outbound, internal) based on the firewall rule name and interface.
+1. **Grok Parsing**: The pipeline handles multiple log formats:
+   * Standard Syslog with CEF extensions (Common Event Format).
+   * Standard Syslog with process names and PIDs.
+   * Kernel-level firewall logs (e.g., `[WAN_IN-default-D]`).
+   * UniFi device name events.
+
+2. **Key-Value Extraction**:
+   * Parses `key=value` pairs from the message body.
+   * **Note**: Certain raw fields (`MAC`, `PREC`, `ID`, `TOS`, `TTL`, `LEN`, `URGP`, `WINDOW`, `RES`) are explicitly excluded during extraction to reduce noise, focusing on core network identity fields.
+
+3. **ECS Mapping**: Renames vendor-specific fields (e.g., `SRC`, `DST`, `SPT`, `DPT`, `PROTO`) to standard ECS fields.
+
+4. **Event Classification**: A painless script analyzes the `rule.name` to determine the event outcome:
+   * **Allow/Success**: If the rule name contains `LAN_IN` or `WAN_IN`.
+   * **Deny/Failure**: If the rule name contains `DROP`, `REJECT`, or `DENY`.
+   * **Info**: All other events.
+
+5. **Enrichment**:
+   * **GeoIP**: Adds `source.geo` and `destination.geo` location data.
+   * **Community ID**: Generates a network flow hash for correlation.
 
 ## ECS Field Mappings
 
 The following table lists the field mappings from the raw UniFi logs to the Elastic Common Schema (ECS).
 
-| ECS Field | UniFi Raw / Description | Example | 
+| ECS Field | UniFi Raw Field | Description | 
 | ----- | ----- | ----- | 
-| `@timestamp` | derived from syslog timestamp | `2023-10-27T10:00:00.000Z` | 
-| `event.module` | `unifi` | `unifi` | 
-| `event.dataset` | `unifi.log` | `unifi.log` | 
-| `event.action` | Rule action (derived) | `allow`, `deny`, `drop` | 
-| `event.category` | Fixed value | `network` | 
-| `event.kind` | Fixed value | `event` | 
-| `event.outcome` | Derived from action | `success` (allow), `failure` (drop) | 
-| `source.ip` | `SRC` | `192.168.1.50` | 
-| `source.port` | `SPT` | `54322` | 
-| `source.mac` | `MAC` (parsed source) | `aa:bb:cc:dd:ee:ff` | 
-| `destination.ip` | `DST` | `8.8.8.8` | 
-| `destination.port` | `DPT` | `53` | 
-| `destination.mac` | `MAC` (parsed dest) | `11:22:33:44:55:66` | 
-| `network.transport` | `PROTO` | `UDP` | 
-| `network.protocol` | `PROTO` (lowercase) | `udp` | 
-| `observer.ingress.interface` | `IN` | `eth0` | 
-| `observer.egress.interface` | `OUT` | `eth1` | 
-| `rule.name` | Rule identifier from log prefix | `WAN_IN-default-D` | 
-| `log.level` | Syslog severity | `warning`, `info` | 
-| `host.hostname` | Syslog hostname | `UDM-Pro` | 
+| `@timestamp` | `syslog_timestamp` | Derived from the syslog header. | 
+| `host.hostname` | `SYSLOGHOST` | The hostname of the UniFi device. | 
+| `process.name` | `process.name` | Name of the process generating the log (e.g., `sudo`, `kernel`). | 
+| `process.pid` | `process.pid` | Process ID. | 
+| `rule.name` | `rule.name` | The firewall rule triggered (e.g., `WAN_IN-default-D`). | 
+| `source.ip` | `SRC`, `UNIFIclientIp`, `unifi.src` | Source IP address. | 
+| `source.port` | `SPT` | Source port number. | 
+| `source.mac` | `MAC`, `UNIFIclientMac` | Source MAC address. | 
+| `source.geo.*` | - | Geolocation derived from Source IP. | 
+| `destination.ip` | `DST`, `unifi.dst` | Destination IP address. | 
+| `destination.port` | `DPT` | Destination port number. | 
+| `destination.geo.*` | - | Geolocation derived from Destination IP. | 
+| `network.transport` | `PROTO` | Protocol (e.g., TCP, UDP). | 
+| `network.community_id` | - | Hash of the network flow tuple. | 
+| `network.name` | `UNIFIwifiName` | Name of the WiFi network (SSID). | 
+| `user.name` | `UNIFIadmin` | Administrative user associated with the event. | 
+| `event.reason` | `msg` | Text description of the event. | 
+| `event.action` | - | Derived from rule name (e.g., `allow`, `deny`). | 
+| `event.outcome` | - | Derived from rule name (e.g., `success`, `failure`). | 
+| `observer.vendor` | `observer.vendor` | Vendor (from CEF headers). | 
+| `observer.product` | `observer.product` | Product name (from CEF headers). | 
+| `observer.version` | `observer.version` | Firmware version (from CEF headers). | 
 
 ## Example Log
 
 **Raw Syslog:**
-
-```text
-<4>Oct 27 10:00:00 UDM-Pro kernel: [WAN_IN-default-D]IN=eth4 OUT=eth0 MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=1.2.3.4 DST=192.168.1.100 LEN=60 TOS=0x00 PREC=0x00 TTL=52 ID=34324 DF PROTO=TCP SPT=443 DPT=56789 WINDOW=65535 RES=0x00 SYN URGP=0
