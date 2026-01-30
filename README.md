@@ -13,11 +13,4 @@ The goal of this repository is to provide another resource for security practiti
 
 ---
 
-## 📂 Repository Structure
 
-```text
-security/
-├── integrations/       # Custom integration packages (e.g., Unifi for Kibana)
-├── detection-rules/    # Detection logic and query definitions
-├── scripts/            # Utility scripts (Python/Bash)
-└── README.md
