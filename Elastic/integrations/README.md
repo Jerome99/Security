@@ -1,40 +1,79 @@
-# How to Build an Integration
+Custom Elastic Integrations
 
-To upload an integration to Kibana, it must be packaged into a `.zip` file with a specific internal versioned folder structure. We use a helper script to generate this artifact.
+This repository contains source code for custom Elastic Integrations. It is structured to allow multiple integrations to coexist and be built individually using a shared build system.
 
-## Prerequisites
+Repository Structure
 
-Before building, ensure you have the following installed:
+Elastic/integrations/
+├── README.md                  <-- This file (General documentation)
+└── packages/
+    ├── build_package.py       <-- Generic build script (zips up integration folders)
+    │
+    ├── unifi/                 <-- Source code for UniFi integration
+    │   ├── manifest.yml
+    │   ├── data_stream/
+    │   └── ...
+    │
+    └── [new_integration]/     <-- Future integrations go here
+        ├── manifest.yml
+        └── ...
 
-* Python 3
-* PyYAML (`pip install pyyaml`)
 
-## Build Instructions
+How to Build an Integration
 
-1.  Open your terminal and navigate to the `packages` directory:
+To upload an integration to Kibana, it must be packaged into a .zip file. We use a helper script to bundle the source directory into this format.
 
-    ```bash
-    cd packages
-    ```
+Prerequisites
 
-2.  Run the build script. By default, this builds the **unifi** package:
+Python 3
 
-    ```bash
-    python build_package.py
-    ```
+pyyaml (pip install pyyaml)
 
-    > **Note:** To build a different package, pass the folder name as an argument:
-    >
-    > ```bash
-    > python build_package.py my-other-package
-    > ```
+Build Instructions
 
-3.  The script will generate a zip file (e.g., `unifi-0.0.13.zip`) inside the `packages/` directory.
+Navigate to the packages directory:
 
-## How to Install
+cd packages
 
-1.  Log in to **Kibana**.
-2.  Navigate to **Management** -> **Integrations**.
-3.  Click the **Upload integration** button (located in the top right).
-4.  Select the `.zip` file you just generated.
-5.  Once uploaded, go to **Settings** -> **Install** to enable it.
+
+Run the build script with the name of the folder you want to package:
+
+python build_package.py <package_name>
+
+
+Examples:
+
+# Build the UniFi integration
+python build_package.py unifi
+
+# Build a future integration
+python build_package.py my-custom-app
+
+
+The script will read the version from manifest.yml inside the target folder and generate a zip file (e.g., unifi-0.0.13.zip) inside the packages/ directory.
+
+Installation
+
+Log in to Kibana.
+
+Navigate to Management -> Integrations.
+
+Click Upload integration.
+
+Select the generated .zip file.
+
+Go to Settings -> Install to enable the integration.
+
+Developing a New Integration
+
+Create a new folder inside packages/ (e.g., packages/my-app/).
+
+Ensure you have the required structure:
+
+manifest.yml (Must contain name and version)
+
+data_stream/ directory
+
+docs/README.md (The content displayed in the Kibana UI)
+
+Run the build command above to package and test it.
