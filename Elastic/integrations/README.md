@@ -1,49 +1,40 @@
-# Elastic Integrations Repository
+# How to Build an Integration
 
-This repository contains custom Elastic Integrations.
+To upload an integration to Kibana, it must be packaged into a `.zip` file with a specific internal versioned folder structure. We use a helper script to generate this artifact.
 
-## Repository Structure
+## Prerequisites
 
-```text
-Elastic/integrations/
-├── README.md                  <-- This file
-└── packages/
-    ├── build_package.py       <-- Script to bundle integrations
-    └── unifi/                 <-- Source code for UniFi integration
-        ├── manifest.yml
-        ├── data_stream/
-        └── ...
+Before building, ensure you have the following installed:
 
-## How to Build an Integration
-To upload an integration to Kibana, it must be packaged into a .zip file with a specific internal versioned folder structure. We use a helper script to generate this artifact.
+* Python 3
+* PyYAML (`pip install pyyaml`)
 
-Prerequisites
-Python 3 installed.
+## Build Instructions
 
-PyYAML installed (pip install pyyaml).
+1.  Open your terminal and navigate to the `packages` directory:
 
-Build Instructions
-Open your terminal and navigate to the packages directory:
+    ```bash
+    cd packages
+    ```
 
-Bash
-cd packages
-Run the build script. By default, it builds the unifi package:
+2.  Run the build script. By default, this builds the **unifi** package:
 
-Bash
-python build_package.py
-To build a different package, pass the folder name as an argument:
+    ```bash
+    python build_package.py
+    ```
 
-Bash
-python build_package.py my-other-package
-The script will generate a zip file (e.g., unifi-0.0.13.zip) inside the packages/ directory.
+    > **Note:** To build a different package, pass the folder name as an argument:
+    >
+    > ```bash
+    > python build_package.py my-other-package
+    > ```
 
-How to Install
-Log in to Kibana.
+3.  The script will generate a zip file (e.g., `unifi-0.0.13.zip`) inside the `packages/` directory.
 
-Navigate to Management -> Integrations.
+## How to Install
 
-Click the Upload integration button (top right).
-
-Select the .zip file you just generated.
-
-Once uploaded, go to Settings -> Install to enable it.
+1.  Log in to **Kibana**.
+2.  Navigate to **Management** -> **Integrations**.
+3.  Click the **Upload integration** button (located in the top right).
+4.  Select the `.zip` file you just generated.
+5.  Once uploaded, go to **Settings** -> **Install** to enable it.
