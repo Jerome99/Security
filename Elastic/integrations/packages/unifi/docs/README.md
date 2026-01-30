@@ -88,3 +88,10 @@ The following table lists the field mappings from the raw UniFi logs to the Elas
 ## Example Log
 
 **Raw Syslog:**
+
+'Oct 27 10:00:00 UDM-Pro kernel: [WAN_IN-default-D]IN=eth4 OUT=eth0 MAC=aa:bb:cc:dd:ee:ff:11:22:33:44:55:66:08:00 SRC=1.2.3.4 DST=192.168.1.100 LEN=60 TOS=0x00 PREC=0x00 TTL=52 ID=34324 DF PROTO=TCP SPT=443 DPT=56789 WINDOW=65535 RES=0x00 SYN URGP=0'
+
+
+**Mapped Event (JSON):**
+
+{ "@timestamp": "2023-10-27T10:00:00.000Z", "host": { "hostname": "UDM-Pro" }, "rule": { "name": "WAN_IN-default-D" }, "event": { "kind": "event", "category": "network", "action": "allow", "outcome": "success" }, "source": { "ip": "1.2.3.4", "port": 443, "geo": { "country_iso_code": "US" } }, "destination": { "ip": "192.168.1.100", "port": 56789 }, "network": { "transport": "tcp", "community_id": "1:hO+sN4H+MG5MY/8h4...=" } }
