@@ -27,7 +27,7 @@ The integration collects logs through the following data streams:
 2. Navigate to **Settings > System > Advanced**.
 3. Enable **Remote Logging**.
 4. Enter the **IP Address** of the Elastic Agent.
-5. Enter the **Port** (default: `514` or typically `9001` for custom integrations).
+5. Enter the **Port** (default: `514` or typically `5614` for this custom integrations).
 6. Set the **Logging Level** (recommended: `Debug` for firewall logs, `Auto` for general).
 7. Click **Apply Changes**.
 
