@@ -1,16 +1,16 @@
-format_version: 2.0.0
+format_version: "3.0.3"
 name: unifi
 title: "UniFi Networks"
-version: 0.0.13
+version: 0.0.15
 description: "Custom integration for UniFi Network logs via Syslog/UDP/TCP, compliant with Elastic Package Registry."
 type: integration
 categories: ["network", "security"]
 conditions:
-  kibana.version: "^8.8.0"
+  kibana.version: "^8.15.1 || ^9.0.0"
   elastic.subscription: "basic"
 owner:
   type: user
-  github: jerome99
+  github: jerome99/Security
 policy_templates:
   - name: unifi_logs
     title: UniFi Logs
@@ -19,8 +19,8 @@ policy_templates:
       - log
     inputs:
       - type: udp
-        title: Collect via UDP
-        description: Listen for logs over UDP (default port 5614)
+        title: Collect unifi logs via UDP
+        description: Listen for unifi logs over UDP (default port 5614)
       - type: tcp
-        title: Collect via TCP
-        description: Listen for logs over TCP (default port 5614)
+        title: Collect unifi logs via TCP
+        description: Listen for unifi logs over TCP (default port 5614)

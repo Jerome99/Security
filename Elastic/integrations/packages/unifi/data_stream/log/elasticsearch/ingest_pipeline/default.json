@@ -5,10 +5,12 @@
       "grok": {
         "field": "message",
         "patterns": [
-          "%{SYSLOGTIMESTAMP:syslog_timestamp} (?:%{TIMESTAMP_ISO8601} )?%{SYSLOGHOST:host.hostname} CEF:0\\|%{DATA:observer.vendor}\\|%{DATA:observer.product}\\|%{DATA:observer.version}\\|%{DATA:event.code}\\|%{DATA:event.name}\\|%{DATA:event.severity}\\|%{GREEDYDATA:cef_extensions}",
+          "(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} (?:%{TIMESTAMP_ISO8601:unifi.iso_timestamp} )?%{SYSLOGHOST:host.hostname} CEF:0\\|%{DATA:observer.vendor}\\|%{DATA:observer.product}\\|%{DATA:observer.version}\\|%{DATA:event.code}\\|%{DATA:event.name}\\|%{DATA:event.severity}\\|%{GREEDYDATA:cef_extensions}",
           "CEF:0\\|%{DATA:observer.vendor}\\|%{DATA:observer.product}\\|%{DATA:observer.version}\\|%{DATA:event.code}\\|%{DATA:event.name}\\|%{DATA:event.severity}\\|%{GREEDYDATA:cef_extensions}",
-          "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{DATA:process.name}(?:\\[%{POSINT:process.pid:long}\\])?:? %{GREEDYDATA:legacy_kv_body}",
-          "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} kernel: \\[%{DATA:rule.name}\\]%{GREEDYDATA:legacy_kv_body}",
+          "(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{NOTSPACE:unifi.ap_tag}: kernel: \\[%{NUMBER:unifi.kernel_uptime}\\] %{GREEDYDATA:clean_message}",
+          "(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{NOTSPACE:unifi.ap_tag}: %{DATA:process.name}(?:\\[%{POSINT:process.pid:long}\\])?:? %{GREEDYDATA:clean_message}",
+          "(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{DATA:process.name}(?:\\[%{POSINT:process.pid:long}\\])?:? %{GREEDYDATA:legacy_kv_body}",
+          "(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} kernel: \\[%{DATA:rule.name}\\]%{GREEDYDATA:legacy_kv_body}",
           "UNIFIdeviceName=%{DATA:observer.name} %{GREEDYDATA:legacy_kv_body}"
         ],
         "ignore_missing": true,
@@ -20,6 +22,34 @@
             }
           }
         ]
+      }
+    },
+    {
+      "grok": {
+        "description": "Parse AP Tag for MAC and Product info (e.g., 788a20dc0ace,UAP-AC-Pro-Gen2-6.8.2+15592)",
+        "field": "unifi.ap_tag",
+        "patterns": [
+          "%{DATA:observer.mac},%{DATA:observer.product}-%{GREEDYDATA:observer.version}"
+        ],
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "set": {
+        "description": "Promote clean_message to legacy_kv_body for KV parsing attempts",
+        "if": "ctx.clean_message != null",
+        "field": "legacy_kv_body",
+        "value": "{{clean_message}}"
+      }
+    },
+    {
+      "gsub": {
+        "description": "Clean up noisy kernel headers (e.g., ===[Handler]:) from KV body to prevent parsing errors",
+        "if": "ctx.legacy_kv_body != null",
+        "field": "legacy_kv_body",
+        "pattern": "^=+\\[.*?\\]:\\s*",
+        "replacement": ""
       }
     },
     {
@@ -64,7 +94,7 @@
     {
       "script": {
         "description": "Merge CEF and KV fields into a common temporary object for mapping",
-        "source": "\n          if (ctx.unifi == null) ctx.unifi = [:];\n          if (ctx.unifi.cef != null) {\n            ctx.unifi.putAll(ctx.unifi.cef);\n            ctx.unifi.remove('cef');\n          }\n          if (ctx.unifi.kv != null) {\n            ctx.unifi.putAll(ctx.unifi.kv);\n            ctx.unifi.remove('kv');\n          }\n        "
+        "source": "\n          if (ctx.unifi == null) ctx.unifi = [:];\n          \n          // Merge CEF if it is a Map\n          if (ctx.unifi.cef instanceof Map) {\n            ctx.unifi.putAll(ctx.unifi.cef);\n            ctx.unifi.remove('cef');\n          }\n          \n          // Merge KV if it is a Map (Safeguard against casting errors)\n          if (ctx.unifi.kv instanceof Map) {\n            ctx.unifi.putAll(ctx.unifi.kv);\n            ctx.unifi.remove('kv');\n          } else if (ctx.unifi.kv != null) {\n            // If kv exists but isn't a map (e.g. parsing failed), remove it to clean up\n            ctx.unifi.remove('kv');\n          }\n        "
       }
     },
     {
@@ -159,6 +189,41 @@
       }
     },
     {
+      "rename": {
+        "field": "unifi.UNIFIdeviceName",
+        "target_field": "observer.name",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIdeviceIp",
+        "target_field": "observer.ip",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIdeviceMac",
+        "target_field": "observer.mac",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIdeviceModel",
+        "target_field": "labels.device_model",
+        "ignore_missing": true
+      }
+    },
+    {
+      "rename": {
+        "field": "unifi.UNIFIaccessMethod",
+        "target_field": "labels.access_method",
+        "ignore_missing": true
+      }
+    },
+    {
       "grok": {
         "field": "event.reason",
         "patterns": [
@@ -170,6 +235,18 @@
     },
     {
       "date": {
+        "if": "ctx.unifi?.iso_timestamp != null",
+        "field": "unifi.iso_timestamp",
+        "formats": [
+          "ISO8601"
+        ],
+        "target_field": "@timestamp",
+        "ignore_failure": true
+      }
+    },
+    {
+      "date": {
+        "if": "ctx.unifi?.iso_timestamp == null && ctx.syslog_timestamp != null",
         "field": "syslog_timestamp",
         "formats": [
           "MMM  d HH:mm:ss",
@@ -195,6 +272,13 @@
       }
     },
     {
+      "convert": {
+        "field": "event.severity",
+        "type": "long",
+        "ignore_missing": true
+      }
+    },
+    {
       "lowercase": {
         "field": "network.transport",
         "ignore_missing": true
@@ -214,7 +298,8 @@
     },
     {
       "script": {
-        "source": "if (ctx.rule != null && ctx.rule.name != null) { if (ctx.rule.name.contains('LAN_IN') || ctx.rule.name.contains('WAN_IN')) { ctx.event.action = 'allow'; ctx.event.outcome = 'success'; } else if (ctx.rule.name.contains('DROP') || ctx.rule.name.contains('REJECT') || ctx.rule.name.contains('DENY')) { ctx.event.action = 'deny'; ctx.event.outcome = 'failure'; } else { ctx.event.action = 'info'; } }",
+        "description": "Set Event Actions and Outcomes based on Rule or Event Code",
+        "source": "\n        // Handle Firewall Rules\n        if (ctx.rule != null && ctx.rule.name != null) {\n           if (ctx.rule.name.contains('LAN_IN') || ctx.rule.name.contains('WAN_IN')) { \n             ctx.event.action = 'allow'; \n             ctx.event.outcome = 'success'; \n           } else if (ctx.rule.name.contains('DROP') || ctx.rule.name.contains('REJECT') || ctx.rule.name.contains('DENY')) { \n             ctx.event.action = 'deny'; \n             ctx.event.outcome = 'failure'; \n           } else { \n             ctx.event.action = 'info'; \n           } \n        }\n        \n        // Handle Admin Access (Code 1000)\n        if (ctx.event?.code == '1000' || (ctx.event?.name != null && ctx.event.name.contains('Admin Accessed'))) {\n          ctx.event.category = 'authentication';\n          ctx.event.type = 'start';\n          ctx.event.action = 'login';\n          ctx.event.outcome = 'success';\n        }\n        ",
         "ignore_failure": true
       }
     },
@@ -239,13 +324,22 @@
       }
     },
     {
+      "set": {
+        "description": "For AP logs, set the readable message as the main message field (replacing the raw syslog header)",
+        "if": "ctx.clean_message != null",
+        "field": "message",
+        "value": "{{clean_message}}"
+      }
+    },
+    {
       "remove": {
         "field": [
           "legacy_kv_body",
           "cef_extensions",
           "syslog_timestamp",
-          "unifi.kv",
-          "unifi.cef"
+          "syslog",
+          "clean_message",
+          "unifi"
         ],
         "ignore_missing": true
       }
