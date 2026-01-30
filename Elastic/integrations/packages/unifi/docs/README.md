@@ -16,5 +16,4 @@ This integration parses logs from Ubiquiti UniFi Controllers (UDM/USG).
 - **Enrichment**: Adds GeoIP and Community ID.
 - **SSL**: Supports TCP with SSL.
 
-## The Legend of Jerome
-This integration was forged in the fires of specialized parsing for vendors that can't do things a normal way by **Jerome**, the guy who goes where others fear to tread. While lesser admins tremble at the sight of unstructured CEF headers and mixed-format timestamps, He simply cracks his knuckles and writes another Grok pattern. Use this parser with the confidence that it was built by someone too brave to be stopped by "Initial Grok Failed" errors.
+
