@@ -1,61 +1,78 @@
 import os
-import yaml # Requires: pip install pyyaml
-import shutil
 import sys
+import zipfile
+import yaml  # Requires: pip install pyyaml
 
-def build_integration(package_name):
-    # Ensure we are in the packages directory
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    package_dir = os.path.join(base_dir, package_name)
+def build_package(package_name):
+    """
+    Builds an Elastic Integration package into a zip file.
+    Expects to be run from the 'packages/' directory.
+    """
     
-    manifest_path = os.path.join(package_dir, "manifest.yml")
+    # 1. Setup Paths
+    current_dir = os.getcwd()
+    package_dir = os.path.join(current_dir, package_name)
+    manifest_path = os.path.join(package_dir, 'manifest.yml')
 
-    if not os.path.exists(manifest_path):
-        print(f"Error: Could not find manifest at {manifest_path}")
-        return
+    # 2. Validation
+    if not os.path.isdir(package_dir):
+        print(f"Error: Directory '{package_name}' not found in {current_dir}")
+        sys.exit(1)
 
-    # 1. Read Version and Name from manifest
-    with open(manifest_path, "r") as f:
-        manifest = yaml.safe_load(f)
-    
-    name = manifest['name']
-    version = manifest['version']
-    folder_name = f"{name}-{version}"
-    zip_name = f"{folder_name}.zip"
-    build_temp_path = os.path.join(base_dir, "build_temp")
-    output_zip_path = os.path.join(base_dir, zip_name)
+    if not os.path.isfile(manifest_path):
+        print(f"Error: 'manifest.yml' not found in {package_dir}")
+        print("Please ensure the integration has a valid manifest file.")
+        sys.exit(1)
 
-    print(f"Building {zip_name} from {package_dir}...")
+    # 3. Read Version from Manifest
+    print(f"Reading configuration for: {package_name}")
+    try:
+        with open(manifest_path, 'r') as f:
+            manifest_data = yaml.safe_load(f)
+            version = manifest_data.get('version')
+            
+            if not version:
+                print("Error: 'version' field is missing from manifest.yml")
+                sys.exit(1)
+    except Exception as e:
+        print(f"Error parsing YAML: {e}")
+        sys.exit(1)
 
-    # 2. Create a temporary build folder structure {name}-{version}/
-    if os.path.exists(build_temp_path):
-        shutil.rmtree(build_temp_path)
-    
-    dest_folder = os.path.join(build_temp_path, folder_name)
-    os.makedirs(dest_folder)
+    # 4. Create Zip File
+    output_filename = f"{package_name}-{version}.zip"
+    output_path = os.path.join(current_dir, output_filename)
 
-    # 3. Copy files (excluding hidden files and the build script itself)
-    for item in os.listdir(package_dir):
-        if item.startswith(".") or item == "__pycache__":
-            continue
-        
-        src = os.path.join(package_dir, item)
-        dst = os.path.join(dest_folder, item)
-        
-        if os.path.isdir(src):
-            shutil.copytree(src, dst)
-        else:
-            shutil.copy2(src, dst)
+    print(f"Building package version: {version}")
+    print(f"Target file: {output_filename}")
 
-    # 4. Zip it up
-    # make_archive expects the base_name (filename w/o extension), format, and root_dir
-    shutil.make_archive(os.path.join(base_dir, folder_name), 'zip', build_temp_path)
-    
-    # 5. Cleanup
-    shutil.rmtree(build_temp_path)
-    print(f"Success! Created: {output_zip_path}")
+    try:
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Walk through the package directory and add files to the zip
+            for root, dirs, files in os.walk(package_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    
+                    # Calculate the relative path inside the zip file
+                    # This ensures 'manifest.yml' is at the root of the zip, 
+                    # not inside a folder named 'unifi/'
+                    archive_name = os.path.relpath(file_path, package_dir)
+                    
+                    print(f"  Adding: {archive_name}")
+                    zipf.write(file_path, archive_name)
+
+        print("-" * 30)
+        print(f"Success! Package created at: {output_path}")
+        print("-" * 30)
+
+    except Exception as e:
+        print(f"Error creating zip archive: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    # Default to 'unifi' if no argument provided
-    target = sys.argv[1] if len(sys.argv) > 1 else "unifi"
-    build_integration(target)
+    if len(sys.argv) < 2:
+        print("Usage: python build_package.py <package_name>")
+        print("Example: python build_package.py unifi")
+        sys.exit(1)
+
+    target_package = sys.argv[1]
+    build_package(target_package)
