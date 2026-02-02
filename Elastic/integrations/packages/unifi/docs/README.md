@@ -18,7 +18,7 @@ The integration collects logs through the following data streams:
 
 ## Requirements
 
-* **Elastic Agent**: Must be installed on a host capable of receiving Syslog traffic from your UniFi devices.
+* **Elastic Agent**: Must be installed on a host capable of receiving Syslog traffic from your UniFi devices. 
 * **Syslog Configuration**: You must configure your UniFi Console to send remote logs to the Elastic Agent's IP address and port.
 
 ### UniFi Configuration

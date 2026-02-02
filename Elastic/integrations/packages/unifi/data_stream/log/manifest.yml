@@ -4,7 +4,7 @@ type: logs
 streams:
   - title: "UniFi UDP Syslog"
     input: udp 
-    description: "Listen for UniFi Syslog over UDP"
+    description: "Listen for UniFi Syslog over UDP."
     vars:
       - name: listen_address
         type: text
@@ -44,7 +44,7 @@ streams:
         multi: false
 
   - title: "UniFi TCP Syslog"    
-    description: "Listen for UniFi Syslog over TCP"
+    description: "Listen for UniFi Syslog over TCP."
     input: tcp
     vars:
       - name: listen_address

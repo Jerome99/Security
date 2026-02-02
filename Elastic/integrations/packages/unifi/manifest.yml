@@ -2,7 +2,7 @@ format_version: "3.0.3"
 name: unifi
 title: "UniFi Networks"
 version: 0.0.28
-description: "Custom integration for UniFi Network logs via Syslog/UDP/TCP, compliant with Elastic Package Registry."
+description: "Custom integration for UniFi Network logs via Syslog/UDP/TCP, compliant with Elastic Package Registry. "
 type: integration
 categories: ["network", "security"]
 conditions:

@@ -1,6 +1,6 @@
 - version: "0.0.28"
   changes:
-    - description: "Fixed caused by the if condition being placed outside the set processor block in the IP conflict section in the default.yml pipeline file."
+    - description: "Fixed caused by the if condition being placed outside the set processor block in the IP conflict section in the default.yml pipeline file. This correction ensures proper execution of the logic to handle IP conflicts in UniFi logs."
       type: bugfix
   date: "2026-02-02"
 - version: "0.0.26"
