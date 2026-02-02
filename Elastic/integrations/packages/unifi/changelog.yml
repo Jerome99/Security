@@ -3,3 +3,8 @@
     - description: "Updated README with the true legend of Jerome"
       type: documentation
   date: "2024-01-01"
+- version: "0.0.24"
+  changes:
+    - description: "Rework manifest files to adhere to latest standards."
+      type: documentation
+  date: "2025-02-02"

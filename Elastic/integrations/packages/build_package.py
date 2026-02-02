@@ -45,6 +45,10 @@ def build_package(package_name):
     print(f"Building package version: {version}")
     print(f"Target file: {output_filename}")
 
+    # Define the top-level directory name inside the zip
+    # Elastic requires this to be {package_name}-{version}
+    package_root_dir = f"{package_name}-{version}"
+
     try:
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             # Walk through the package directory and add files to the zip
@@ -53,9 +57,9 @@ def build_package(package_name):
                     file_path = os.path.join(root, file)
                     
                     # Calculate the relative path inside the zip file
-                    # This ensures 'manifest.yml' is at the root of the zip, 
-                    # not inside a folder named 'unifi/'
-                    archive_name = os.path.relpath(file_path, package_dir)
+                    # This ensures files are nested inside a folder named {package_name}-{version}
+                    rel_path = os.path.relpath(file_path, package_dir)
+                    archive_name = os.path.join(package_root_dir, rel_path)
                     
                     print(f"  Adding: {archive_name}")
                     zipf.write(file_path, archive_name)

@@ -2,18 +2,24 @@ title: "UniFi Logs"
 name: log
 type: logs
 streams:
-  - input: udp
-    title: "UniFi UDP Syslog"
+  - title: "UniFi UDP Syslog"
+    input: udp 
     description: "Listen for UniFi Syslog over UDP"
     vars:
       - name: listen_address
         type: text
         title: "Listen Address"
-        default: "0.0.0.0"
+        default: 0.0.0.0
+        required: true
+        show_user: true
+        multi: false
       - name: listen_port
         type: integer
         title: "Listen Port"
         default: 5614
+        required: true
+        show_user: true
+        multi: false
       - name: timezone
         type: text
         title: "Timezone"
@@ -27,6 +33,9 @@ streams:
         type: boolean
         title: "Preserve Original Event"
         description: "Preserve the original log message in event.original."
+        required: true
+        show_user: true
+        multi: false
         default: true
       - name: custom_processors
         type: yaml
@@ -34,18 +43,24 @@ streams:
         description: "Add custom processors to the input (YAML format)."
         multi: false
 
-  - input: tcp
-    title: "UniFi TCP Syslog"
+  - title: "UniFi TCP Syslog"    
     description: "Listen for UniFi Syslog over TCP"
+    input: tcp
     vars:
       - name: listen_address
         type: text
         title: "Listen Address"
-        default: "0.0.0.0"
+        default: 0.0.0.0
+        required: true
+        show_user: true
+        multi: false
       - name: listen_port
         type: integer
         title: "Listen Port"
         default: 5614
+        required: true
+        show_user: true
+        multi: false
       - name: ssl_certificate
         type: text
         title: "SSL Certificate"
