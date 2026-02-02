@@ -1,10 +1,15 @@
-- version: "0.0.13"
+- version: "0.0.28"
   changes:
-    - description: "Updated README with the true legend of Jerome"
-      type: documentation
-  date: "2024-01-01"
+    - description: "Fixed caused by the if condition being placed outside the set processor block in the IP conflict section in the default.yml pipeline file."
+      type: bugfix
+  date: "2026-02-02"
+- version: "0.0.26"
+  changes:
+    - description: "Fixed regex escaping issues in the YAML ingest pipeline."
+      type: bugfix
+  date: "2026-02-02"
 - version: "0.0.24"
   changes:
-    - description: "Rework manifest files to adhere to latest standards."
-      type: documentation
+    - description: "Rework manifest files to adhere to latest standards. Converted default.json to .yml format."
+      type: enhancement
   date: "2025-02-02"

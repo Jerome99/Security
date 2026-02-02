@@ -82,6 +82,9 @@ streams:
         type: boolean
         title: "Preserve Original Event"
         description: "Preserve the original log message in event.original."
+        required: true
+        show_user: true
+        multi: false
         default: true
       - name: custom_processors
         type: yaml

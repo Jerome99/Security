@@ -1,0 +1,349 @@
+description: "Pipeline for parsing Ubiquiti UniFi Syslog, Firewall, and IPS events to ECS"
+processors:
+  - grok:
+      field: message
+      patterns:
+        # Note: In YAML single quotes, we use \[ to match a literal bracket. We do NOT use \\[ like in JSON.
+        - '(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} (?:%{TIMESTAMP_ISO8601:unifi.iso_timestamp} )?%{SYSLOGHOST:host.hostname} CEF:0\|%{DATA:observer.vendor}\|%{DATA:observer.product}\|%{DATA:observer.version}\|%{DATA:event.code}\|%{DATA:event.name}\|%{DATA:event.severity}\|%{GREEDYDATA:cef_extensions}'
+        - 'CEF:0\|%{DATA:observer.vendor}\|%{DATA:observer.product}\|%{DATA:observer.version}\|%{DATA:event.code}\|%{DATA:event.name}\|%{DATA:event.severity}\|%{GREEDYDATA:cef_extensions}'
+        - '(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{NOTSPACE:unifi.ap_tag}: kernel: \[\s*%{NUMBER:unifi.kernel_uptime}\s*\] %{GREEDYDATA:clean_message}'
+        - '(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{NOTSPACE:unifi.ap_tag}: %{DATA:process.name}(?:\[%{POSINT:process.pid:long}\])?:? %{GREEDYDATA:clean_message}'
+        - '(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} %{DATA:process.name}(?:\[%{POSINT:process.pid:long}\])?:? %{GREEDYDATA:legacy_kv_body}'
+        - '(?:<%{POSINT:syslog.priority}>)?%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:host.hostname} kernel: \[\s*%{DATA:rule.name}\s*\]%{GREEDYDATA:legacy_kv_body}'
+        - 'UNIFIdeviceName=%{DATA:observer.name} %{GREEDYDATA:legacy_kv_body}'
+      ignore_missing: true
+      on_failure:
+        - set:
+            field: error.message
+            value: "Initial Grok Failed: {{ _ingest.on_failure_message }}"
+  - grok:
+      description: Parse AP Tag for MAC and Product info (e.g., 788a20dc0ace,UAP-AC-Pro-Gen2-6.8.2+15592)
+      field: unifi.ap_tag
+      patterns:
+        - '%{DATA:observer.mac},%{DATA:observer.product}-%{GREEDYDATA:observer.version}'
+      ignore_missing: true
+      ignore_failure: true
+  - set:
+      description: Promote clean_message to legacy_kv_body for KV parsing attempts
+      if: ctx.clean_message != null
+      field: legacy_kv_body
+      value: "{{clean_message}}"
+  - gsub:
+      description: 'Clean up noisy kernel headers (e.g., ===[Handler]:) from KV body to prevent parsing errors'
+      if: ctx.legacy_kv_body != null
+      field: legacy_kv_body
+      # Using double quotes to ensure exact regex parity with JSON
+      pattern: "^=+\\[.*?\\]:\\s*"
+      replacement: ""
+  - gsub:
+      if: ctx.cef_extensions != null
+      field: cef_extensions
+      # Using double quotes to ensure exact regex parity with JSON for complex lookaheads
+      pattern: "\\s+(?=(?:UNIFI|src|dst|msg|cnt|cs\\d|cn\\d|dvc|shost|dhost|smac|dmac|act|app|c6a\\d|cat|cfp\\d)\\w*=)"
+      replacement: "|"
+  - kv:
+      if: ctx.cef_extensions != null
+      field: cef_extensions
+      field_split: "|"
+      value_split: "="
+      target_field: unifi.cef
+      ignore_failure: true
+  - kv:
+      if: ctx.legacy_kv_body != null
+      field: legacy_kv_body
+      field_split: " "
+      value_split: "="
+      target_field: unifi.kv
+      ignore_failure: true
+      exclude_keys:
+        - MAC
+        - PREC
+        - ID
+        - TOS
+        - TTL
+        - LEN
+        - URGP
+        - WINDOW
+        - RES
+  - script:
+      description: Merge CEF and KV fields into a common temporary object for mapping
+      source: |
+        if (ctx.unifi == null) ctx.unifi = [:];
+        
+        // Merge CEF if it is a Map
+        if (ctx.unifi.cef instanceof Map) {
+          ctx.unifi.putAll(ctx.unifi.cef);
+          ctx.unifi.remove('cef');
+        }
+        
+        // Merge KV if it is a Map (Safeguard against casting errors)
+        if (ctx.unifi.kv instanceof Map) {
+          ctx.unifi.putAll(ctx.unifi.kv);
+          ctx.unifi.remove('kv');
+        } else if (ctx.unifi.kv != null) {
+          // If kv exists but isn't a map (e.g. parsing failed), remove it to clean up
+          ctx.unifi.remove('kv');
+        }
+  - rename:
+      field: unifi.src
+      target_field: source.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIclientIp
+      target_field: source.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIclientIP
+      target_field: source.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIclientHostname
+      target_field: source.hostname
+      ignore_missing: true
+  - rename:
+      field: unifi.SRC
+      target_field: source.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.dst
+      target_field: destination.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.DST
+      target_field: destination.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIclientMac
+      target_field: source.mac
+      ignore_missing: true
+  - rename:
+      field: unifi.MAC
+      target_field: source.mac
+      ignore_missing: true
+  - rename:
+      field: unifi.SPT
+      target_field: source.port
+      ignore_missing: true
+  - rename:
+      field: unifi.DPT
+      target_field: destination.port
+      ignore_missing: true
+  - rename:
+      field: unifi.PROTO
+      target_field: network.transport
+      ignore_missing: true
+  - rename:
+      field: unifi.msg
+      target_field: event.reason
+      ignore_missing: true
+  - rename:
+      field: unifi.reason
+      target_field: event.reason
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIwifiName
+      target_field: network.name
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIadmin
+      target_field: user.name
+      ignore_missing: true
+  - rename:
+      field: unifi.suser
+      target_field: user.name
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIdeviceName
+      target_field: observer.name
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIdeviceIp
+      target_field: observer.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIdeviceMac
+      target_field: observer.mac
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIdeviceModel
+      target_field: labels.device_model
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIaccessMethod
+      target_field: labels.access_method
+      ignore_missing: true
+  # Rec 7: Inbound Interface Mapping
+  - rename:
+      field: unifi.deviceInboundInterface
+      target_field: observer.ingress.interface.name
+      ignore_missing: true
+  # Rec 7: Outbound Interface (existing) to Egress
+  - rename:
+      field: unifi.deviceOutboundInterface
+      target_field: observer.egress.interface.name
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIhost
+      target_field: host.hostname
+      ignore_missing: true
+  # Rec 4: WAN Failover Mappings
+  - rename:
+      field: unifi.UNIFIfailoverWanIsp
+      target_field: observer.egress.interface.alias
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIfailoverWanIp
+      target_field: observer.egress.ip
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIfailoverWanName
+      target_field: observer.egress.interface.name
+      ignore_missing: true
+  # Rec 5: Wireless Mappings
+  - rename:
+      field: unifi.UNIFIbssid
+      target_field: wireless.bssid
+      ignore_missing: true
+  - rename:
+      field: unifi.UNIFIWiFiRssi
+      target_field: wireless.signal.strength
+      ignore_missing: true
+  # Rec 6: IP Conflict Handling (Corrected nested 'if')
+  - set:
+      if: "ctx.unifi?.UNIFIconflictIp != null"
+      field: event.type
+      value: ["error", "conflict"]
+  - set:
+      if: "ctx.unifi?.UNIFIconflictIp != null"
+      field: error.message
+      value: "IP Conflict Detected: {{unifi.UNIFIconflictIp}}"
+      ignore_failure: true
+  - grok:
+      field: event.reason
+      patterns:
+        - '.*Source IP: %{IP:source.ip}'
+      ignore_missing: true
+      ignore_failure: true
+  - date:
+      if: ctx.unifi?.iso_timestamp != null
+      field: unifi.iso_timestamp
+      formats:
+        - ISO8601
+      target_field: "@timestamp"
+      ignore_failure: true
+  - date:
+      if: ctx.unifi?.iso_timestamp == null && ctx.syslog_timestamp != null
+      field: syslog_timestamp
+      formats:
+        - "MMM  d HH:mm:ss"
+        - "MMM dd HH:mm:ss"
+      target_field: "@timestamp"
+      timezone: "{{ event.timezone }}"
+      ignore_failure: true
+  - convert:
+      field: source.port
+      type: long
+      ignore_missing: true
+  - convert:
+      field: destination.port
+      type: long
+      ignore_missing: true
+  - convert:
+      field: event.severity
+      type: long
+      ignore_missing: true
+  - convert:
+      field: wireless.signal.strength
+      type: long
+      ignore_missing: true
+  - lowercase:
+      field: network.transport
+      ignore_missing: true
+  - set:
+      field: event.kind
+      value: event
+  - set:
+      field: event.category
+      value: network
+  - script:
+      description: "Set Event Actions, Outcomes, and Categories based on Rule, Code, or UniFi Category"
+      source: |
+        // Handle Firewall Rules
+        if (ctx.rule != null && ctx.rule.name != null) {
+          if (ctx.rule.name.contains('LAN_IN') || ctx.rule.name.contains('WAN_IN')) { 
+            ctx.event.action = 'allow'; 
+            ctx.event.outcome = 'success'; 
+          } else if (ctx.rule.name.contains('DROP') || ctx.rule.name.contains('REJECT') || ctx.rule.name.contains('DENY')) { 
+            ctx.event.action = 'deny'; 
+            ctx.event.outcome = 'failure'; 
+          } else { 
+            ctx.event.action = 'info'; 
+          } 
+        }
+        
+        // Handle Admin Access (Code 1000)
+        if (ctx.event?.code == '1000' || (ctx.event?.name != null && ctx.event.name.contains('Admin Accessed'))) {
+          ctx.event.category = 'authentication';
+          ctx.event.type = 'start';
+          ctx.event.action = 'login';
+          ctx.event.outcome = 'success';
+        }
+
+        // Rec 1: Dynamic Event Categorization
+        if (ctx.unifi?.cat != null) {
+            if (ctx.unifi.cat == 'Security') {
+                if (ctx.unifi.act == 'Block') {
+                     ctx.event.category = ['network', 'firewall'];
+                } else {
+                     ctx.event.category = ['network', 'security']; 
+                }
+            } else if (ctx.unifi.cat == 'Intrusion Prevention') {
+                ctx.event.category = ['network', 'intrusion_detection'];
+                // Rec 2: IPS events are alerts
+                ctx.event.kind = 'alert';
+            } else if (ctx.unifi.cat == 'System') {
+                ctx.event.category = ['configuration'];
+            } else if (ctx.unifi.cat == 'Internet') {
+                ctx.event.category = ['network', 'availability'];
+            }
+        }
+
+        // Rec 2: Alert Classification based on High Severity (>=7)
+        if (ctx.event?.severity != null) {
+             try {
+                int sev = Integer.parseInt(ctx.event.severity.toString());
+                if (sev >= 7) {
+                    ctx.event.kind = 'alert';
+                }
+             } catch (Exception e) {}
+        }
+      ignore_failure: true
+  - geoip:
+      field: source.ip
+      target_field: source.geo
+      ignore_missing: true
+  - geoip:
+      field: destination.ip
+      target_field: destination.geo
+      ignore_missing: true
+  - community_id:
+      target_field: network.community_id
+      ignore_failure: true
+  - set:
+      description: For AP logs, set the readable message as the main message field (replacing the raw syslog header)
+      if: ctx.clean_message != null
+      field: message
+      value: "{{clean_message}}"
+  - remove:
+      field:
+        - legacy_kv_body
+        - cef_extensions
+        - syslog_timestamp
+        - syslog
+        - clean_message
+        - unifi
+      ignore_missing: true
+on_failure:
+  - set:
+      field: error.message
+      value: "Pipeline Failed: {{ _ingest.on_failure_message }}"
